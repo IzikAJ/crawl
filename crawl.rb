@@ -54,7 +54,7 @@ puts "Scanning url: #{@host}"
 
 @mech = Mechanize.new { |agent|
   agent.follow_meta_refresh = true
-  agent.add_auth(@src, @config[:auth][:user], @config[:auth][:pass]) if @config[:auth]
+  agent.add_auth(@host, @config[:auth][:user], @config[:auth][:pass]) if @config[:auth]
   agent.user_agent_alias = "iPhone" if @mobile
 }
 
@@ -152,9 +152,13 @@ def check_url url
     begin
       @mech.get(url) do |page|
         page.links.each do |link|
-          _href = link.href.gsub(/([^:]|^)\/{2,}/, '\1/')
-          u = URI(_href)
-          add_url_to_list _href
+          begin
+            _href = link.href.gsub(/([^:]|^)\/{2,}/, '\1/')
+            u = URI(_href)
+            add_url_to_list _href
+          rescue => e
+            puts "- err -> #{e.to_s}"
+          end
         end
         check_assets page
         check_images page
