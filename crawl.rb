@@ -7,11 +7,6 @@ require 'rubygems'
 require 'mechanize'
 require 'uri'
 
-@args = ARGV
-@host = @args[0]
-
-@host = "http://#{@args[0].gsub(/^(((http(s)?:)?\/\/)?)/i, '')}"
-
 def keys_to_sym src
   if src.is_a? Array
     src.map {|item| keys_to_sym item}
@@ -43,29 +38,6 @@ def put_hash_file filename, props
   end
 end
 
-@config = get_hash_file 'config.yml'
-if @config
-  puts "Settings:"
-  pp @config
-end
-@mobile = @config[:mobile] || @args[1]
-
-puts "Scanning url: #{@host}"
-
-@mech = Mechanize.new { |agent|
-  agent.follow_meta_refresh = true
-  agent.add_auth(@host, @config[:auth][:user], @config[:auth][:pass]) if @config[:auth]
-  agent.user_agent_alias = "iPhone" if @mobile
-}
-
-system "rm #{@host.gsub('http://', '')}.log"
-
-@link_list = []
-@outer_list = []
-@urls_checked = []
-@urls_to_check = []
-@errors = []
-
 def put_error url, error = nil
   @errors << url
   File.open("#{@host.gsub('http://', '')}.log", 'a+') do |file|
@@ -86,14 +58,14 @@ def add_url_to_list url
   u = URI(url)
   s, h, p, q, f = u.scheme, u.host, u.path, u.query, u.fragment
   if !s || s == 'https'
-    link = find_url(u)    
+    link = find_url(u)
     if link
       link[:query] << q unless link[:query].include?(q)
     else
       ( h ? @outer_list : @link_list ) << {path: (p || ""), query: [q], host: h}
     end
     if !s && !h
-      l = [@host, [p, q].join('?').chomp('?')].join('/').gsub(/([^:]|^)\/{2,}/, '\1/')  
+      l = [@host, [p, q].join('?').chomp('?')].join('/').gsub(/([^:]|^)\/{2,}/, '\1/')
       @urls_to_check << l if !(@urls_to_check + @urls_checked).find {|item| item == l}
     end
   end
@@ -173,17 +145,57 @@ def check_url url
   end
 end
 
-puts puts '*'*25
+def check_host host
+  system "rm #{host.gsub('http://', '')}.log"
+  puts "Scanning host: #{host}"
+  @host = host
+  @mobile = @config[:mobile] || @args[1]
+  @mech = Mechanize.new { |agent|
+    agent.follow_meta_refresh = true
+    agent.add_auth(host, @config[:auth][:user], @config[:auth][:pass]) if @config[:auth]
+    agent.user_agent_alias = "iPhone" if @mobile
+  }
 
-# check_url @host
-@urls_to_check << @host
-while @urls_to_check.size > 0
-  curr = @urls_to_check[0]
-  puts "[#{@urls_checked.size}/#{@urls_to_check.size}] Checking url #{curr}"
-  check_url curr
+  @link_list = []
+  @outer_list = []
+  @urls_checked = []
+  @urls_to_check = []
+  @errors = []
+
+  # check_url host
+  @urls_to_check << host
+  while @urls_to_check.size > 0
+    curr = @urls_to_check[0]
+    puts "[#{@urls_checked.size}/#{@urls_to_check.size}] Checking url #{curr}"
+    check_url curr
+  end
+end
+
+@host=""
+def check_host_list list
+  puts "Scanning list of hosts, total: #{list.size}"
+  list.each do |host|
+    check_host "http://#{host.gsub(/^(((http(s)?:)?\/\/)?)/i, '')}"
+  end
 end
 
 puts puts '*'*25
+@args = ARGV
+@config = get_hash_file 'config.yml'
+if @config
+  puts "Settings:"
+  pp @config
+end
+
+if @args[0] =~ /^list$/i
+  puts '*'*25
+  puts 'Scnning list:'
+  pp @config[:list]
+  check_host_list @config[:list]
+else
+  @host = "http://#{@args[0].gsub(/^(((http(s)?:)?\/\/)?)/i, '')}"
+  check_host @host
+end
+puts '*'*25
 
 pp @errors
-
